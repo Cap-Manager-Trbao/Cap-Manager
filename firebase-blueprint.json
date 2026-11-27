@@ -1,0 +1,496 @@
+{
+  "entities": {
+    "Group": {
+      "title": "Group",
+      "description": "A CAP management team group containing members, offers, distribution matrix, and configuration settings (no plaintext passwords).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique document ID for the group",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the group (e.g. Nhóm 1)",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional group description",
+          "maxLength": 300
+        },
+        "leaderUsername": {
+          "type": "string",
+          "description": "Leader login username for this group",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_.\\-]+$"
+        },
+        "leaderDisplayName": {
+          "type": "string",
+          "description": "Display name of the group leader",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "members": {
+          "type": "array",
+          "description": "Bounded list of team members, optional Telegram handles/IDs, and shift schedules"
+        },
+        "campaigns": {
+          "type": "array",
+          "description": "Bounded list of daily offers and CAP targets"
+        },
+        "matrix": {
+          "type": "object",
+          "description": "Map of offerId -> memberId -> allocated CAP count"
+        },
+        "autoBackup": {
+          "type": "object",
+          "description": "Backup matrix from last automatic CAP distribution"
+        },
+        "settings": {
+          "type": "object",
+          "description": "Distribution algorithm, 2-way Telegram bot & AI butler settings for this group"
+        },
+        "completions": {
+          "type": "object",
+          "description": "Optional per-date map of offerId -> memberId -> boolean tracking real-time CAP completion status"
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Shared group visibility marker",
+          "enum": ["shared"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-modified timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "leaderUsername",
+        "leaderDisplayName",
+        "members",
+        "campaigns",
+        "matrix",
+        "autoBackup",
+        "settings",
+        "visibility",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GroupCredential": {
+      "title": "GroupCredential",
+      "description": "Salted SHA-256 credentials for verifying a group leader across devices without storing plaintext passwords.",
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "Referenced group ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "username": {
+          "type": "string",
+          "description": "Leader login username",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_.\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Leader display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "salt": {
+          "type": "string",
+          "description": "Random hex salt used for SHA-256 hashing",
+          "minLength": 8,
+          "maxLength": 64
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "Hex SHA-256 hash of salt + ':' + password",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of credential update"
+        }
+      },
+      "required": [
+        "groupId",
+        "username",
+        "displayName",
+        "salt",
+        "passwordHash",
+        "updatedAt"
+      ]
+    },
+    "HistoryRecord": {
+      "title": "HistoryRecord",
+      "description": "Immutable daily snapshot of CAP distribution for a group.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique history snapshot ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Parent group ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "description": "Distribution date YYYY-MM-DD",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional history note",
+          "maxLength": 300
+        },
+        "savedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Client ISO timestamp label",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "members": {
+          "type": "array",
+          "description": "Member snapshot"
+        },
+        "campaigns": {
+          "type": "array",
+          "description": "Offer snapshot"
+        },
+        "matrix": {
+          "type": "object",
+          "description": "Distribution matrix snapshot"
+        },
+        "stats": {
+          "type": "object",
+          "description": "Aggregated distribution metrics"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "groupId",
+        "date",
+        "note",
+        "savedAt",
+        "members",
+        "campaigns",
+        "matrix",
+        "stats",
+        "createdAt"
+      ]
+    },
+    "CapTransferRequest": {
+      "title": "CapTransferRequest",
+      "description": "A CAP transfer/swap proposal between two group members awaiting Leader approval.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique transfer request ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "groupId": {
+          "type": "string",
+          "description": "Parent group ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "description": "Distribution date YYYY-MM-DD",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "offerId": {
+          "type": "string",
+          "description": "Offer ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "offerCode": {
+          "type": "string",
+          "description": "Offer code label",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "offerName": {
+          "type": "string",
+          "description": "Offer name",
+          "maxLength": 200
+        },
+        "fromMemberId": {
+          "type": "string",
+          "description": "Source member ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "fromMemberName": {
+          "type": "string",
+          "description": "Source member display name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "toMemberId": {
+          "type": "string",
+          "description": "Receiver member ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "toMemberName": {
+          "type": "string",
+          "description": "Receiver member display name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "qty": {
+          "type": "integer",
+          "description": "Number of CAP units to transfer (1..100)"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional reason or note",
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "description": "Origin of request",
+          "enum": ["app", "telegram"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Approval state",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "resolvedBy": {
+          "type": "string",
+          "description": "Name of Leader who resolved the transfer",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "groupId",
+        "date",
+        "offerId",
+        "offerCode",
+        "offerName",
+        "fromMemberId",
+        "fromMemberName",
+        "toMemberId",
+        "toMemberName",
+        "qty",
+        "note",
+        "source",
+        "status",
+        "resolvedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GroupTelegramBot": {
+      "title": "GroupTelegramBot",
+      "description": "Server-managed per-group Telegram Bot Token configuration (encrypted at rest when TELEGRAM_ENCRYPTION_KEY is configured, never queried by browser clients).",
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "Referenced group ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "botToken": {
+          "type": "string",
+          "description": "Telegram Bot Token or AES-256-GCM encrypted token string",
+          "minLength": 20,
+          "maxLength": 512
+        },
+        "botUsername": {
+          "type": "string",
+          "description": "Verified @username of the Telegram Bot",
+          "maxLength": 64
+        },
+        "tokenMasked": {
+          "type": "string",
+          "description": "Masked suffix preview (e.g. ••••••AB12)",
+          "maxLength": 32
+        },
+        "encrypted": {
+          "type": "boolean",
+          "description": "Whether botToken is encrypted at rest"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of bot token update"
+        }
+      },
+      "required": [
+        "groupId",
+        "botToken",
+        "botUsername",
+        "tokenMasked",
+        "encrypted",
+        "updatedAt"
+      ]
+    },
+    "GroupSchedulerState": {
+      "title": "GroupSchedulerState",
+      "description": "Persisted per-group Telegram automated job & CAP distribution delivery state across server restarts.",
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "description": "Referenced group ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lastShiftReminderDate": {
+          "type": "string",
+          "description": "Last VN date YYYY-MM-DD when the 11:00 shift reminder was sent",
+          "maxLength": 10
+        },
+        "lastShiftReminderSentAt": {
+          "type": "string",
+          "description": "HH:mm or ISO label when the shift reminder ran",
+          "maxLength": 40
+        },
+        "lastShiftReminderStatus": {
+          "type": "string",
+          "description": "Outcome of last shift reminder attempt",
+          "enum": ["none", "sent", "failed"]
+        },
+        "lastShiftReminderError": {
+          "type": "string",
+          "description": "Last error message if shift reminder failed",
+          "maxLength": 300
+        },
+        "lastCutoffNudgeDate": {
+          "type": "string",
+          "description": "Last VN date YYYY-MM-DD when cutoff nudge ran",
+          "maxLength": 10
+        },
+        "lastDailySummaryDate": {
+          "type": "string",
+          "description": "Last VN date YYYY-MM-DD when daily summary ran",
+          "maxLength": 10
+        },
+        "lastDistributionSentDate": {
+          "type": "string",
+          "description": "Last date YYYY-MM-DD whose CAP table was delivered to Telegram",
+          "maxLength": 10
+        },
+        "lastDistributionMatrixHash": {
+          "type": "string",
+          "description": "Hash of the last CAP matrix successfully delivered to Telegram",
+          "maxLength": 128
+        },
+        "lastDistributionSentAt": {
+          "type": "string",
+          "description": "ISO timestamp of last CAP table delivery to Telegram",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update"
+        }
+      },
+      "required": ["groupId", "updatedAt"]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Health check document for Firestore startup connectivity check.",
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/groups/{groupId}": {
+      "schema": { "$ref": "#/entities/Group" },
+      "description": "Shared CAP Manager groups synchronized across all devices."
+    },
+    "/groups/{groupId}/history/{historyId}": {
+      "schema": { "$ref": "#/entities/HistoryRecord" },
+      "description": "Per-group daily CAP distribution history snapshots."
+    },
+    "/groups/{groupId}/transfers/{transferId}": {
+      "schema": { "$ref": "#/entities/CapTransferRequest" },
+      "description": "Per-group CAP transfer/swap requests between members awaiting Leader approval."
+    },
+    "/groupCredentials/{groupId}": {
+      "schema": { "$ref": "#/entities/GroupCredential" },
+      "description": "Salted SHA-256 credentials for each group leader account."
+    },
+    "/groupTelegramBots/{groupId}": {
+      "schema": { "$ref": "#/entities/GroupTelegramBot" },
+      "description": "Per-group Telegram Bot Token records managed by the Express proxy."
+    },
+    "/groupSchedulerState/{groupId}": {
+      "schema": { "$ref": "#/entities/GroupSchedulerState" },
+      "description": "Per-group persistent scheduler & Telegram delivery state."
+    },
+    "/test/{docId}": {
+      "schema": { "$ref": "#/entities/ConnectionTest" },
+      "description": "Read-only connection check path."
+    }
+  }
+}

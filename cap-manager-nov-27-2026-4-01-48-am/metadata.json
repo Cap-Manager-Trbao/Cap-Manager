@@ -1,0 +1,6 @@
+{
+  "name": "CAP Manager",
+  "description": "Ứng dụng quản lý thành viên, chiến dịch và tự động phân chia CAP cùng điểm thưởng thông minh cho đội nhóm.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

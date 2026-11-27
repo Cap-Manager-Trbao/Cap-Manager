@@ -63,7 +63,10 @@ export function getDateRange(startDateStr, count = 7) {
 const WEEKDAY_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
 export function formatCalendarDateHeader(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
+  const safeStr = typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())
+    ? dateStr.trim()
+    : getTodayDateString();
+  const [y, m, d] = safeStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
   const dd = String(d).padStart(2, '0');
   const mm = String(m).padStart(2, '0');

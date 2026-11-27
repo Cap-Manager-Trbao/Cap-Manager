@@ -5,7 +5,6 @@ import {
   TELEGRAM_TEMPLATE_KEYS,
   TELEGRAM_TEMPLATE_META,
   formatTelegramPhotoCaption,
-  formatTelegramShiftReminderMessage,
   formatTelegramTestMessage,
   getDefaultBotLabel,
   getDefaultTelegramTemplates,
@@ -242,24 +241,6 @@ export default function TelegramMessageCustomizer({
       });
     }
 
-    if (selectedType === 'shiftReminder') {
-      const previewMembers =
-        activeMembers.length > 0
-          ? activeMembers
-          : [
-              { id: 'p1', name: 'Trung Bảo', active: true, shifts: ['ca1', 'ca2'], shiftSchedule: {} },
-              { id: 'p2', name: 'Uyên', active: true, shifts: ['ca2'], shiftSchedule: {} },
-            ];
-      return formatTelegramShiftReminderMessage({
-        groupId,
-        groupName,
-        dateStr: todayStr,
-        members: previewMembers,
-        appLink: `${sampleAppLink}&tab=members`,
-        customTemplate: customTemplateToPreview,
-      });
-    }
-
     return formatTelegramTestMessage({
       groupId,
       groupName,
@@ -291,7 +272,7 @@ export default function TelegramMessageCustomizer({
           aria-label="Chọn loại tin nhắn Bot Telegram"
           className="inline-flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80"
         >
-          {TELEGRAM_TEMPLATE_KEYS.map((key) => {
+          {TELEGRAM_TEMPLATE_KEYS.filter((key) => key !== 'shiftReminder').map((key) => {
             const itemMeta = TELEGRAM_TEMPLATE_META[key];
             const isActive = selectedType === key;
             const hasCustom = Boolean(savedTemplates[key]);

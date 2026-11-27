@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfigProvider, Spin, message } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import {
-  DEFAULT_OFFERS,
   DEFAULT_MEMBERS,
   DEFAULT_SETTINGS,
   STORAGE_KEYS,
@@ -24,7 +23,6 @@ import {
   sortOffersByPointsDesc,
 } from './utils/capAlgorithm.js';
 import { getSavedDistributionForDate } from './utils/dashboardSchedule.js';
-import { exportDistributionToExcel } from './utils/excelService.js';
 import {
   buildDashboardShareLink,
   computeDistributionDiff,
@@ -46,7 +44,6 @@ import {
   saveGroupTelegramBotToken,
   sendTelegramNotification,
   sendTelegramPhoto,
-  sendTelegramShiftReminderNow,
   sendTelegramTestMessage,
 } from './utils/telegramClient.js';
 import { isValidTelegramBotToken } from './utils/telegramBotConfig.js';
@@ -73,14 +70,15 @@ import {
 } from './utils/firestoreService.js';
 import LayoutShell from './components/LayoutShell.jsx';
 import DashboardView from './components/DashboardView.jsx';
-import DistributionView from './components/DistributionView.jsx';
-import CampaignsView from './components/CampaignsView.jsx';
-import MembersView from './components/MembersView.jsx';
-import GroupsView from './components/GroupsView.jsx';
-import HistoryView from './components/HistoryView.jsx';
-import SettingsView from './components/SettingsView.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import ChangePasswordModal from './components/ChangePasswordModal.jsx';
+
+const DistributionView = lazy(() => import('./components/DistributionView.jsx'));
+const CampaignsView = lazy(() => import('./components/CampaignsView.jsx'));
+const MembersView = lazy(() => import('./components/MembersView.jsx'));
+const GroupsView = lazy(() => import('./components/GroupsView.jsx'));
+const HistoryView = lazy(() => import('./components/HistoryView.jsx'));
+const SettingsView = lazy(() => import('./components/SettingsView.jsx'));
 
 const ANTD_THEME = {
   token: {
@@ -502,8 +500,6 @@ export default function App() {
               botToken: pending.botToken || '',
               allowReauthPrompt: false,
             });
-          } else if (pending.type === 'reminder') {
-            await handleSendShiftReminderNow(pending.groupId, { allowReauthPrompt: false });
           } else if (pending.type === 'saveToken') {
             await handleSaveGroupTelegramBotToken(pending.groupId, pending.botToken, {
               allowReauthPrompt: false,
@@ -629,10 +625,8 @@ export default function App() {
     leaderDisplayName,
     leaderUsername,
     leaderPassword,
-    copyDefaultCampaigns,
     telegramEnabled,
     telegramChatId,
-    telegramShiftReminderEnabled,
     telegramBotToken,
   }) => {
     try {
@@ -643,7 +637,7 @@ export default function App() {
       }
 
       const newId = createId('group');
-      const newCampaigns = copyDefaultCampaigns ? structuredClone(DEFAULT_OFFERS) : [];
+      const newCampaigns = [];
       const newMembers = [
         {
           id: createId('mem'),
@@ -674,7 +668,7 @@ export default function App() {
           ...DEFAULT_SETTINGS,
           telegramEnabled: Boolean(telegramEnabled),
           telegramChatId: String(telegramChatId || '').trim(),
-          telegramShiftReminderEnabled: telegramShiftReminderEnabled !== false,
+          telegramShiftReminderEnabled: false,
         },
       };
 
@@ -1207,24 +1201,6 @@ export default function App() {
     return res;
   };
 
-  const handleSendShiftReminderNow = async (groupId, { allowReauthPrompt = true } = {}) => {
-    const res = await sendTelegramShiftReminderNow(groupId);
-    if (res.ok) {
-      setServerAuthGroupId(groupId);
-      messageApi.success('Đã gửi tin nhắn nhắc mọi người đăng ký ca làm vào Group Telegram!');
-    } else if (res.status === 401) {
-      if (allowReauthPrompt) {
-        const targetGroup = groups.find((g) => g.id === groupId) || activeGroup;
-        requestTelegramReauth({ type: 'reminder', groupId }, targetGroup);
-      } else {
-        messageApi.warning(res.error || 'Vui lòng đăng nhập lại Leader để gửi nhắc ca Telegram.');
-      }
-    } else {
-      messageApi.warning(res.error || 'Chưa gửi được tin nhắn nhắc ca Telegram.');
-    }
-    return res;
-  };
-
   // Real-time CAP Completion Toggle (allowed for both Viewer & Leader)
   const handleToggleCompletion = async (offerId, memberId, nextDone, dateOverride = null) => {
     if (!activeGroup?.id) return;
@@ -1496,12 +1472,13 @@ export default function App() {
     }
   };
 
-  const handleExportRecordToExcel = (record) => {
+  const handleExportRecordToExcel = async (record) => {
     if (!record) {
       messageApi.warning('Chưa có bảng chia CAP được lưu cho ngày này để xuất Excel.');
       return;
     }
     const targetDate = record.date || dashboardDate || getTodayDateString();
+    const { exportDistributionToExcel } = await import('./utils/excelService.js');
     const res = exportDistributionToExcel({
       matrix: record.matrix || {},
       campaigns: sortOffersByPointsDesc(record.campaigns || []),
@@ -1516,13 +1493,14 @@ export default function App() {
     messageApi.success(`Đã xuất file Excel: ${res.fileName}`);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (safeTab === 'dashboard') {
       const savedForDashboard = getSavedDistributionForDate(history, dashboardDate);
-      handleExportRecordToExcel(savedForDashboard);
+      await handleExportRecordToExcel(savedForDashboard);
       return;
     }
     const targetDate = distributionDate || getTodayDateString();
+    const { exportDistributionToExcel } = await import('./utils/excelService.js');
     const res = exportDistributionToExcel({
       matrix,
       campaigns,
@@ -1813,13 +1791,11 @@ export default function App() {
 
   const handleResetDefaults = async () => {
     if (!requireLeaderPermission()) return;
-    const targetDate = distributionDate || getTodayDateString();
-    const res = autoDistributeCaps(DEFAULT_MEMBERS, DEFAULT_OFFERS, DEFAULT_SETTINGS, 101, targetDate);
-    const nextMatrix = res.ok ? res.matrix : createEmptyMatrix(DEFAULT_OFFERS, DEFAULT_MEMBERS);
+    const nextMatrix = createEmptyMatrix([], DEFAULT_MEMBERS);
     const synced = await updateActiveGroup((g) => ({
       ...g,
       members: structuredClone(DEFAULT_MEMBERS),
-      campaigns: structuredClone(DEFAULT_OFFERS),
+      campaigns: [],
       settings: { ...DEFAULT_SETTINGS },
       matrix: nextMatrix,
       autoBackup: nextMatrix,
@@ -1827,9 +1803,9 @@ export default function App() {
     if (!synced) return;
     setAlternativesByGroup((prev) => ({
       ...prev,
-      [activeGroup.id]: res.alternatives || [],
+      [activeGroup.id]: [],
     }));
-    messageApi.success(`Đã khôi phục dữ liệu mẫu mặc định cho ${activeGroup.name}.`);
+    messageApi.success(`Đã khôi phục cài đặt mặc định cho ${activeGroup.name}.`);
   };
 
   const handleExportBackupJson = () => {
@@ -1911,153 +1887,160 @@ export default function App() {
           />
         )}
 
-        {safeTab === 'distribute' && canEditActiveGroup && (
-          <DistributionView
-            activeGroup={activeGroup}
-            canEdit={canEditActiveGroup}
-            onOpenLogin={() => {
-              setLoginPreselectGroup(activeGroup);
-              setLoginModalOpen(true);
-            }}
-            members={members}
-            campaigns={campaigns}
-            matrix={matrix}
-            history={history}
-            hasAutoBackup={Boolean(activeGroup?.autoBackup)}
-            stats={stats}
-            settings={settings}
-            distributionDate={distributionDate}
-            onChangeDistributionDate={setDistributionDate}
-            alternatives={alternativesByGroup[activeGroup?.id] || []}
-            onUpdateSettings={handleUpdateSettings}
-            onAutoDistribute={handleAutoDistribute}
-            onRedistributeVariant={handleRedistributeVariant}
-            onSelectAlternative={handleSelectAlternative}
-            onCellChange={handleCellChange}
-            onRestoreAuto={handleRestoreAuto}
-            onPublishDistribution={handlePublishDistribution}
-            isPublishing={isPublishingDistribution}
-            telegramConfigured={Boolean(activeGroupTelegramStatus?.configured)}
-            isTelegramDeliveredForCurrentMatrix={isTelegramDeliveredForCurrentMatrix}
-            telegramSentAtForCurrentDate={telegramSentAtForCurrentDate}
-            onResendTelegram={() => handleResendDistributionTelegram(distributionDate)}
-            onSaveHistory={handleSaveHistory}
-            onExportExcel={handleExportExcel}
-            lockedCells={lockedCellsByGroup[activeGroup?.id] || {}}
-            onToggleLockCell={handleToggleLockCell}
-            onUnlockAllCells={handleUnlockAllCells}
-            rolloverInfo={rolloverInfo}
-            onApplyAiDirectives={handleApplyAiDirectives}
-            onRequestReauth={() => requestTelegramReauth(null)}
-            onNotify={notify}
-          />
-        )}
+        <Suspense
+          fallback={
+            <div className="py-12 flex items-center justify-center">
+              <Spin size="large" />
+            </div>
+          }
+        >
+          {safeTab === 'distribute' && canEditActiveGroup && (
+            <DistributionView
+              activeGroup={activeGroup}
+              canEdit={canEditActiveGroup}
+              onOpenLogin={() => {
+                setLoginPreselectGroup(activeGroup);
+                setLoginModalOpen(true);
+              }}
+              members={members}
+              campaigns={campaigns}
+              matrix={matrix}
+              history={history}
+              hasAutoBackup={Boolean(activeGroup?.autoBackup)}
+              stats={stats}
+              settings={settings}
+              distributionDate={distributionDate}
+              onChangeDistributionDate={setDistributionDate}
+              alternatives={alternativesByGroup[activeGroup?.id] || []}
+              onUpdateSettings={handleUpdateSettings}
+              onAutoDistribute={handleAutoDistribute}
+              onRedistributeVariant={handleRedistributeVariant}
+              onSelectAlternative={handleSelectAlternative}
+              onCellChange={handleCellChange}
+              onRestoreAuto={handleRestoreAuto}
+              onPublishDistribution={handlePublishDistribution}
+              isPublishing={isPublishingDistribution}
+              telegramConfigured={Boolean(activeGroupTelegramStatus?.configured)}
+              isTelegramDeliveredForCurrentMatrix={isTelegramDeliveredForCurrentMatrix}
+              telegramSentAtForCurrentDate={telegramSentAtForCurrentDate}
+              onResendTelegram={() => handleResendDistributionTelegram(distributionDate)}
+              onSaveHistory={handleSaveHistory}
+              onExportExcel={handleExportExcel}
+              lockedCells={lockedCellsByGroup[activeGroup?.id] || {}}
+              onToggleLockCell={handleToggleLockCell}
+              onUnlockAllCells={handleUnlockAllCells}
+              rolloverInfo={rolloverInfo}
+              onApplyAiDirectives={handleApplyAiDirectives}
+              onRequestReauth={() => requestTelegramReauth(null)}
+              onNotify={notify}
+            />
+          )}
 
-        {safeTab === 'campaigns' && canEditActiveGroup && (
-          <CampaignsView
-            activeGroup={activeGroup}
-            canEdit={canEditActiveGroup}
-            onOpenLogin={() => {
-              setLoginPreselectGroup(activeGroup);
-              setLoginModalOpen(true);
-            }}
-            campaigns={allCampaigns}
-            members={members}
-            history={history}
-            onAddCampaign={handleAddCampaign}
-            onUpdateCampaign={handleUpdateCampaign}
-            onDeleteCampaign={handleDeleteCampaign}
-            onReplaceCampaigns={handleReplaceCampaigns}
-            onNotify={notify}
-            onRequestReauth={() => requestTelegramReauth(null)}
-          />
-        )}
+          {safeTab === 'campaigns' && canEditActiveGroup && (
+            <CampaignsView
+              activeGroup={activeGroup}
+              canEdit={canEditActiveGroup}
+              onOpenLogin={() => {
+                setLoginPreselectGroup(activeGroup);
+                setLoginModalOpen(true);
+              }}
+              campaigns={allCampaigns}
+              members={members}
+              history={history}
+              onAddCampaign={handleAddCampaign}
+              onUpdateCampaign={handleUpdateCampaign}
+              onDeleteCampaign={handleDeleteCampaign}
+              onReplaceCampaigns={handleReplaceCampaigns}
+              onNotify={notify}
+              onRequestReauth={() => requestTelegramReauth(null)}
+            />
+          )}
 
-        {safeTab === 'members' && (
-          <MembersView
-            activeGroup={activeGroup}
-            canEdit={canEditActiveGroup}
-            onOpenLogin={() => {
-              setLoginPreselectGroup(activeGroup);
-              setLoginModalOpen(true);
-            }}
-            members={members}
-            stats={stats}
-            onAddMember={handleAddMember}
-            onUpdateMember={handleUpdateMember}
-            onUpdateMemberDateShifts={handleUpdateMemberDateShifts}
-            onUpdateMemberMultiDateShifts={handleUpdateMemberMultiDateShifts}
-            onBatchImportShiftSchedule={handleBatchImportShiftSchedule}
-            onDeleteMember={handleDeleteMember}
-            onNotify={notify}
-          />
-        )}
+          {safeTab === 'members' && (
+            <MembersView
+              activeGroup={activeGroup}
+              canEdit={canEditActiveGroup}
+              onOpenLogin={() => {
+                setLoginPreselectGroup(activeGroup);
+                setLoginModalOpen(true);
+              }}
+              members={members}
+              stats={stats}
+              onAddMember={handleAddMember}
+              onUpdateMember={handleUpdateMember}
+              onUpdateMemberDateShifts={handleUpdateMemberDateShifts}
+              onUpdateMemberMultiDateShifts={handleUpdateMemberMultiDateShifts}
+              onBatchImportShiftSchedule={handleBatchImportShiftSchedule}
+              onDeleteMember={handleDeleteMember}
+              onNotify={notify}
+            />
+          )}
 
-        {safeTab === 'groups' && canEditActiveGroup && (
-          <GroupsView
-            groups={groups}
-            activeGroupId={activeGroup?.id}
-            authSession={authSession}
-            serverAuthGroupId={serverAuthGroupId}
-            telegramConfigured={telegramStatus.defaultConfigured}
-            telegramStatusByGroup={telegramStatus.byGroup}
-            onSelectGroup={setActiveGroupId}
-            onCreateGroup={handleCreateGroup}
-            onUpdateGroup={handleUpdateGroup}
-            onDeleteGroup={handleDeleteGroup}
-            onTestTelegram={handleTestTelegram}
-            onDeleteTelegramBotToken={handleDeleteGroupTelegramBotToken}
-            onOpenLoginForGroup={(g) => {
-              setLoginPreselectGroup(g);
-              setLoginModalOpen(true);
-            }}
-            onReauthenticateTelegram={(g) => {
-              setLoginPreselectGroup(g || activeGroup);
-              setLoginModalOpen(true);
-            }}
-            onNotify={notify}
-          />
-        )}
+          {safeTab === 'groups' && canEditActiveGroup && (
+            <GroupsView
+              groups={groups}
+              activeGroupId={activeGroup?.id}
+              authSession={authSession}
+              serverAuthGroupId={serverAuthGroupId}
+              telegramConfigured={telegramStatus.defaultConfigured}
+              telegramStatusByGroup={telegramStatus.byGroup}
+              onSelectGroup={setActiveGroupId}
+              onCreateGroup={handleCreateGroup}
+              onUpdateGroup={handleUpdateGroup}
+              onDeleteGroup={handleDeleteGroup}
+              onTestTelegram={handleTestTelegram}
+              onDeleteTelegramBotToken={handleDeleteGroupTelegramBotToken}
+              onOpenLoginForGroup={(g) => {
+                setLoginPreselectGroup(g);
+                setLoginModalOpen(true);
+              }}
+              onReauthenticateTelegram={(g) => {
+                setLoginPreselectGroup(g || activeGroup);
+                setLoginModalOpen(true);
+              }}
+              onNotify={notify}
+            />
+          )}
 
-        {safeTab === 'history' && canEditActiveGroup && (
-          <HistoryView
-            groupName={activeGroup?.name || 'Nhóm'}
-            history={history}
-            onReopenHistory={handleReopenHistory}
-            onCopyCampaignsFromHistory={handleCopyCampaignsFromHistory}
-            onDeleteHistory={handleDeleteHistory}
-            onNotify={notify}
-          />
-        )}
+          {safeTab === 'history' && canEditActiveGroup && (
+            <HistoryView
+              groupName={activeGroup?.name || 'Nhóm'}
+              history={history}
+              onReopenHistory={handleReopenHistory}
+              onCopyCampaignsFromHistory={handleCopyCampaignsFromHistory}
+              onDeleteHistory={handleDeleteHistory}
+              onNotify={notify}
+            />
+          )}
 
-        {safeTab === 'settings' && canEditActiveGroup && (
-          <SettingsView
-            activeGroup={activeGroup}
-            canEdit={canEditActiveGroup}
-            telegramSessionActive={telegramSessionActive}
-            onOpenLogin={() => {
-              setLoginPreselectGroup(activeGroup);
-              setLoginModalOpen(true);
-            }}
-            onReauthenticateTelegram={() => {
-              setLoginPreselectGroup(activeGroup);
-              setLoginModalOpen(true);
-            }}
-            settings={settings}
-            telegramStatus={{
-              ...telegramStatus,
-              ...activeGroupTelegramStatus,
-            }}
-            onUpdateSettings={handleUpdateSettings}
-            onSaveTelegramBotToken={handleSaveGroupTelegramBotToken}
-            onDeleteTelegramBotToken={handleDeleteGroupTelegramBotToken}
-            onTestTelegram={handleTestTelegram}
-            onSendShiftReminderNow={handleSendShiftReminderNow}
-            onResetDefaults={handleResetDefaults}
-            onExportBackupJson={handleExportBackupJson}
-            onNotify={notify}
-          />
-        )}
+          {safeTab === 'settings' && canEditActiveGroup && (
+            <SettingsView
+              activeGroup={activeGroup}
+              canEdit={canEditActiveGroup}
+              telegramSessionActive={telegramSessionActive}
+              onOpenLogin={() => {
+                setLoginPreselectGroup(activeGroup);
+                setLoginModalOpen(true);
+              }}
+              onReauthenticateTelegram={() => {
+                setLoginPreselectGroup(activeGroup);
+                setLoginModalOpen(true);
+              }}
+              settings={settings}
+              telegramStatus={{
+                ...telegramStatus,
+                ...activeGroupTelegramStatus,
+              }}
+              onUpdateSettings={handleUpdateSettings}
+              onSaveTelegramBotToken={handleSaveGroupTelegramBotToken}
+              onDeleteTelegramBotToken={handleDeleteGroupTelegramBotToken}
+              onTestTelegram={handleTestTelegram}
+              onResetDefaults={handleResetDefaults}
+              onExportBackupJson={handleExportBackupJson}
+              onNotify={notify}
+            />
+          )}
+        </Suspense>
       </LayoutShell>
 
       <LoginModal

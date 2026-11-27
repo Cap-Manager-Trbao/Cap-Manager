@@ -15,19 +15,17 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase.js';
 import {
   DEFAULT_MEMBERS,
-  DEFAULT_OFFERS,
   DEFAULT_SETTINGS,
   STORAGE_KEYS,
   createDefaultGroup1,
 } from '../data/defaultData.js';
 import {
-  autoDistributeCaps,
   createEmptyMatrix,
   normalizeMatrix,
   sortOffersByPointsDesc,
 } from './capAlgorithm.js';
 import { hashPassword, verifyPassword } from './passwordCrypto.js';
-import { getTodayDateString, loadFromStorage } from './storage.js';
+import { loadFromStorage } from './storage.js';
 import { sanitizeTelegramTemplates } from './telegramMessages.js';
 import { normalizeTelegramUsername } from './telegramCommands.js';
 import { applyCapTransferToState } from './aiHelpers.js';
@@ -80,8 +78,8 @@ function sanitizeSettings(raw) {
     autoSaveHistoryOnDistribute: Boolean(merged.autoSaveHistoryOnDistribute),
     telegramEnabled: Boolean(merged.telegramEnabled),
     telegramChatId: validChatId,
-    telegramShiftReminderEnabled: merged.telegramShiftReminderEnabled !== false,
-    telegramShiftReminderTime: sanitizeTimeHHMM(merged.telegramShiftReminderTime) || '11:00',
+    telegramShiftReminderEnabled: false,
+    telegramShiftReminderTime: '',
     telegramInteractiveEnabled: false,
     telegramDeadlineReminderTime: sanitizeTimeHHMM(merged.telegramDeadlineReminderTime),
     telegramDailySummaryTime: sanitizeTimeHHMM(merged.telegramDailySummaryTime),
@@ -261,11 +259,7 @@ export async function seedInitialGroupsIfEmpty() {
     if (Array.isArray(legacyGroups) && legacyGroups.length > 0) {
       groupsToSeed = legacyGroups;
     } else {
-      const today = getTodayDateString();
-      const initialRes = autoDistributeCaps(DEFAULT_MEMBERS, DEFAULT_OFFERS, DEFAULT_SETTINGS, 101, today);
-      const initialMatrix = initialRes.ok
-        ? initialRes.matrix
-        : createEmptyMatrix(DEFAULT_OFFERS, DEFAULT_MEMBERS);
+      const initialMatrix = createEmptyMatrix([], DEFAULT_MEMBERS);
       groupsToSeed = [createDefaultGroup1(initialMatrix)];
     }
 

@@ -25,9 +25,30 @@ export function getAuthRequestHeaders(extra = {}) {
 
 const buildHeaders = getAuthRequestHeaders;
 
+async function fetchWithColdStartRetry(url, options = {}, maxRetries = 2) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (attempt < maxRetries && (res.status === 502 || res.status === 503 || res.status === 504)) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error('Network error');
+}
+
 export async function loginLeaderOnServer(username, password) {
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetchWithColdStartRetry('/api/auth/login', {
       method: 'POST',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -63,7 +84,7 @@ export async function logoutLeaderOnServer() {
 
 export async function checkServerAuthSession() {
   try {
-    const res = await fetch('/api/auth/session', {
+    const res = await fetchWithColdStartRetry('/api/auth/session', {
       method: 'GET',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -83,7 +104,7 @@ export async function checkServerAuthSession() {
 export async function fetchTelegramServerStatus(groupId = '') {
   try {
     const query = groupId ? `?groupId=${encodeURIComponent(groupId)}` : '';
-    const res = await fetch(`/api/telegram/status${query}`, {
+    const res = await fetchWithColdStartRetry(`/api/telegram/status${query}`, {
       method: 'GET',
       credentials: 'same-origin',
     });
@@ -114,7 +135,7 @@ export async function fetchTelegramServerStatus(groupId = '') {
 
 export async function saveGroupTelegramBotToken(groupId, botToken) {
   try {
-    const res = await fetch('/api/telegram/bot-token', {
+    const res = await fetchWithColdStartRetry('/api/telegram/bot-token', {
       method: 'POST',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -145,7 +166,7 @@ export async function saveGroupTelegramBotToken(groupId, botToken) {
 
 export async function deleteGroupTelegramBotToken(groupId) {
   try {
-    const res = await fetch('/api/telegram/bot-token', {
+    const res = await fetchWithColdStartRetry('/api/telegram/bot-token', {
       method: 'DELETE',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -171,7 +192,7 @@ export async function deleteGroupTelegramBotToken(groupId) {
 export async function sendTelegramTestMessage(groupId, chatId, botToken = '') {
   try {
     const payload = botToken ? { groupId, chatId, botToken } : { groupId, chatId };
-    const res = await fetch('/api/telegram/test', {
+    const res = await fetchWithColdStartRetry('/api/telegram/test', {
       method: 'POST',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -203,7 +224,7 @@ export async function sendTelegramNotification(groupId, message, replyMarkup = n
       ...(meta?.distributionDate ? { distributionDate: meta.distributionDate } : {}),
       ...(meta?.matrixHash ? { matrixHash: meta.matrixHash } : {}),
     };
-    const res = await fetch('/api/telegram/send', {
+    const res = await fetchWithColdStartRetry('/api/telegram/send', {
       method: 'POST',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -242,7 +263,7 @@ export async function sendTelegramPhoto(
       ...(meta?.distributionDate ? { distributionDate: meta.distributionDate } : {}),
       ...(meta?.matrixHash ? { matrixHash: meta.matrixHash } : {}),
     };
-    const res = await fetch('/api/telegram/send-photo', {
+    const res = await fetchWithColdStartRetry('/api/telegram/send-photo', {
       method: 'POST',
       credentials: 'same-origin',
       headers: buildHeaders(),
@@ -265,27 +286,3 @@ export async function sendTelegramPhoto(
   }
 }
 
-export async function sendTelegramShiftReminderNow(groupId) {
-  try {
-    const res = await fetch('/api/telegram/send-shift-reminder', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: buildHeaders(),
-      body: JSON.stringify({ groupId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    return {
-      ok: Boolean(res.ok && data?.ok),
-      status: res.status,
-      configured: Boolean(data?.configured),
-      error: data?.error || '',
-    };
-  } catch {
-    return {
-      ok: false,
-      status: 0,
-      configured: false,
-      error: 'Không thể kết nối tới API Telegram của máy chủ.',
-    };
-  }
-}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Button,
   Checkbox,
@@ -26,8 +26,9 @@ import {
   History,
   FileSpreadsheet,
 } from 'lucide-react';
-import ShiftScheduleImportModal from './ShiftScheduleImportModal.jsx';
 import { SHIFTS } from '../data/defaultData.js';
+
+const ShiftScheduleImportModal = lazy(() => import('./ShiftScheduleImportModal.jsx'));
 import { getMemberShiftsOnDate } from '../utils/capAlgorithm.js';
 import {
   addDaysToIso,
@@ -201,7 +202,7 @@ export default function MembersView({
   const handleApplyBulk7Days = async (shiftsToApply) => {
     if (!bulkTargetMember) return;
     const startDate = getBulkStartDate();
-    const dates = getDateRange(startDate, 6);
+    const dates = getDateRange(startDate, 7);
     const dateShiftsMap = {};
     for (const d of dates) {
       dateShiftsMap[d] = [...shiftsToApply];
@@ -217,16 +218,17 @@ export default function MembersView({
       shiftsToApply.length === 0
         ? 'Nghỉ cả 7 ngày'
         : shiftsToApply.map((id) => SHIFTS.find((s) => s.id === id)?.label || id).join(', ');
+    const endDate = dates[dates.length - 1];
     onNotify(
       'success',
-      `Đã áp dụng "${label}" cho 7 ngày (${formatCalendarDateHeader(dates[0]).shortDate} - ${formatCalendarDateHeader(dates[6]).shortDate}) của ${bulkTargetMember.name}.`
+      `Đã áp dụng "${label}" cho 7 ngày (${formatCalendarDateHeader(dates[0]).shortDate} - ${formatCalendarDateHeader(endDate).shortDate}) của ${bulkTargetMember.name}.`
     );
   };
 
   const handleCopyPrevious7Days = async () => {
     if (!bulkTargetMember) return;
     const startDate = getBulkStartDate();
-    const dates = getDateRange(startDate, 6);
+    const dates = getDateRange(startDate, 7);
     const dateShiftsMap = {};
     for (const d of dates) {
       const prevDate = addDaysToIso(d, -7);
@@ -239,9 +241,10 @@ export default function MembersView({
         await onUpdateMemberDateShifts(bulkTargetMember.id, d, sh);
       }
     }
+    const endDate = dates[dates.length - 1];
     onNotify(
       'success',
-      `Đã chép lịch 7 ngày trước sang ${formatCalendarDateHeader(dates[0]).shortDate} - ${formatCalendarDateHeader(dates[6]).shortDate} cho ${bulkTargetMember.name}.`
+      `Đã chép lịch 7 ngày trước sang ${formatCalendarDateHeader(dates[0]).shortDate} - ${formatCalendarDateHeader(endDate).shortDate} cho ${bulkTargetMember.name}.`
     );
   };
 
@@ -875,17 +878,21 @@ export default function MembersView({
         </Form>
       </Modal>
 
-      <ShiftScheduleImportModal
-        open={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
-        activeGroup={activeGroup}
-        members={members}
-        onBatchImportShiftSchedule={onBatchImportShiftSchedule}
-        onImportedJumpToDate={(isoDate) => {
-          if (isoDate) setScheduleStartDate(isoDate);
-        }}
-        onNotify={onNotify}
-      />
+      {importModalOpen && (
+        <Suspense fallback={null}>
+          <ShiftScheduleImportModal
+            open={importModalOpen}
+            onClose={() => setImportModalOpen(false)}
+            activeGroup={activeGroup}
+            members={members}
+            onBatchImportShiftSchedule={onBatchImportShiftSchedule}
+            onImportedJumpToDate={(isoDate) => {
+              if (isoDate) setScheduleStartDate(isoDate);
+            }}
+            onNotify={onNotify}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

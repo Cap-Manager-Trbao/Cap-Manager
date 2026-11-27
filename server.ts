@@ -30,7 +30,6 @@ import {
 } from './src/utils/telegramBotConfig.js';
 import {
   buildDashboardShareLink,
-  formatTelegramShiftReminderMessage,
   formatTelegramTestMessage,
   getVietnamDateTimeParts,
   isValidTelegramChatId,
@@ -293,6 +292,13 @@ function checkRateLimit(key: string, maxRequests = 15, windowMs = 60_000): boole
   }
   timestamps.push(now);
   rateWindowMap.set(key, timestamps);
+  if (rateWindowMap.size > 500) {
+    for (const [k, list] of rateWindowMap.entries()) {
+      if (list.length === 0 || now - list[list.length - 1] >= windowMs) {
+        rateWindowMap.delete(k);
+      }
+    }
+  }
   return true;
 }
 
@@ -739,7 +745,7 @@ function getEffectiveRecordForDate(group: SharedGroupDoc, savedRecord: Record<st
   return { members, campaigns, matrix, hasSavedRecord: Boolean(savedRecord && matrix) };
 }
 
-// Scheduled Automated Jobs (Persistent 11:00 Shift Reminder + Cutoff Nudge + Daily Summary)
+// Scheduled Automated Jobs (Cutoff Nudge + Daily Summary)
 interface GroupSchedulerStateData {
   groupId: string;
   lastShiftReminderDate: string;
@@ -858,73 +864,7 @@ async function runScheduledTelegramJobs(): Promise<{
 
       checkedGroups += 1;
       const schedState = await getGroupSchedulerState(groupId);
-      const reminderTime = String(settings.telegramShiftReminderTime || '11:00').trim() || '11:00';
       const botCfg = await resolveGroupTelegramConfig(groupId, groupName);
-
-      // Job 1: Daily Shift Reminder (default 11:00 VN, 180-minute catch-up window + Firestore dedupe)
-      if (
-        settings.telegramShiftReminderEnabled !== false &&
-        shouldRunScheduledJob({
-          targetHHMM: reminderTime,
-          curHour: hour,
-          curMinute: minute,
-          dateStr,
-          lastSentDate: schedState.lastShiftReminderDate,
-          catchUpMinutes: 180,
-        })
-      ) {
-        const cooldownKey = `shift:${groupId}:${dateStr}`;
-        const retryAfter = schedulerFailureCooldown.get(cooldownKey) || 0;
-        if (Date.now() >= retryAfter) {
-          if (!botCfg.token) {
-            schedulerFailureCooldown.set(cooldownKey, Date.now() + 5 * 60_000);
-            console.warn(
-              `[Telegram Scheduler] ${groupId} bỏ qua nhắc ca ${reminderTime} vì chưa cấu hình Bot Token.`
-            );
-            await upsertGroupSchedulerState(groupId, {
-              lastShiftReminderStatus: 'failed',
-              lastShiftReminderError: 'Nhóm bật Telegram nhưng chưa gắn Bot Token.',
-            });
-          } else {
-            const appLink = buildDashboardShareLink(baseUrl, groupId, dateStr, 'members');
-            const customTemplates =
-              (settings.telegramTemplates as Record<string, unknown> | undefined) || {};
-            const customTpl =
-              typeof customTemplates.shiftReminder === 'string' ? customTemplates.shiftReminder : '';
-            const text = formatTelegramShiftReminderMessage({
-              groupId,
-              groupName,
-              dateStr,
-              members: Array.isArray(groupData.members) ? groupData.members : [],
-              appLink,
-              customTemplate: customTpl,
-            });
-
-            const sendResult = await sendTelegramMessage(chatId, text, botCfg.token);
-            if (sendResult.ok) {
-              triggeredCount += 1;
-              schedulerFailureCooldown.delete(cooldownKey);
-              await upsertGroupSchedulerState(groupId, {
-                lastShiftReminderDate: dateStr,
-                lastShiftReminderSentAt: new Date().toISOString().slice(0, 40),
-                lastShiftReminderStatus: 'sent',
-                lastShiftReminderError: '',
-              });
-              console.info(
-                `[Telegram Scheduler] Đã gửi nhắc ca ${reminderTime} ngày ${dateStr} cho ${groupId}.`
-              );
-            } else {
-              schedulerFailureCooldown.set(cooldownKey, Date.now() + 5 * 60_000);
-              const errMsg = String(sendResult.error || 'Không gửi được tin nhắn nhắc ca.');
-              console.warn(`[Telegram Scheduler] Lỗi gửi nhắc ca cho ${groupId}:`, errMsg);
-              await upsertGroupSchedulerState(groupId, {
-                lastShiftReminderStatus: 'failed',
-                lastShiftReminderError: errMsg.slice(0, 300),
-              });
-            }
-          }
-        }
-      }
 
       if (!botCfg.token) {
         continue;
@@ -1541,88 +1481,6 @@ async function startServer(): Promise<void> {
     res.status(result.ok || !result.configured ? 200 : 400).json(result);
   });
 
-  app.post('/api/telegram/send-shift-reminder', async (req: Request, res: Response) => {
-    const session = getAuthenticatedSession(req);
-    const groupId = String(req.body?.groupId || '').trim();
-
-    if (!session) {
-      res.status(401).json({
-        ok: false,
-        configured: Boolean(getGlobalTelegramBotToken()),
-        error: 'Phiên xác thực Telegram chưa kích hoạt. Vui lòng đăng nhập lại Leader.',
-      });
-      return;
-    }
-
-    if (!groupId || session.groupId !== groupId) {
-      res.status(403).json({
-        ok: false,
-        configured: Boolean(getGlobalTelegramBotToken()),
-        error: 'Chỉ Leader của nhóm này mới được gửi nhắc ca Telegram.',
-      });
-      return;
-    }
-
-    if (!checkRateLimit(`tg-shift:${groupId}`, 8, 60_000)) {
-      res.status(429).json({
-        ok: false,
-        configured: Boolean(getGlobalTelegramBotToken()),
-        error: 'Bạn vừa gửi nhắc ca làm. Vui lòng đợi một lát.',
-      });
-      return;
-    }
-
-    const groupDoc = await fetchSharedGroupDoc(groupId);
-    if (!groupDoc) {
-      res.status(404).json({ ok: false, configured: false, error: 'Không tìm thấy nhóm.' });
-      return;
-    }
-
-    const botCfg = await resolveGroupTelegramConfig(groupId, groupDoc.name || groupId);
-    const settings = (groupDoc.settings || {}) as Record<string, unknown>;
-    const chatId = String(settings.telegramChatId || '').trim();
-    if (!settings.telegramEnabled || !isValidTelegramChatId(chatId)) {
-      res.status(400).json({
-        ok: false,
-        configured: botCfg.configured,
-        error: 'Vui lòng bật Telegram và lưu Group Chat ID hợp lệ trước khi gửi nhắc ca.',
-      });
-      return;
-    }
-
-    const { dateStr } = getVietnamDateTimeParts(new Date());
-    const nextDateStr = addDaysToIso(dateStr, 1);
-    const appLink = buildDashboardShareLink(getAppBaseUrl(req), groupId, dateStr, 'members');
-    const customTemplates =
-      (settings.telegramTemplates as Record<string, unknown> | undefined) || {};
-    const customTpl =
-      typeof customTemplates.shiftReminder === 'string' ? customTemplates.shiftReminder : '';
-    const text = formatTelegramShiftReminderMessage({
-      groupId,
-      groupName: String(groupDoc.name || groupId),
-      dateStr,
-      members: Array.isArray(groupDoc.members) ? groupDoc.members : [],
-      appLink,
-      customTemplate: customTpl,
-    });
-
-    const result = await sendTelegramMessage(chatId, text, botCfg.token);
-    if (result.ok) {
-      await upsertGroupSchedulerState(groupId, {
-        lastShiftReminderDate: dateStr,
-        lastShiftReminderSentAt: new Date().toISOString().slice(0, 40),
-        lastShiftReminderStatus: 'sent',
-        lastShiftReminderError: '',
-      });
-    } else {
-      await upsertGroupSchedulerState(groupId, {
-        lastShiftReminderStatus: 'failed',
-        lastShiftReminderError: String(result.error || '').slice(0, 300),
-      });
-    }
-    res.status(result.ok || !result.configured ? 200 : 400).json(result);
-  });
-
   // Protected Server-Side AI Proxy Endpoints (/api/ai/*)
   app.post('/api/ai/parse-offers', async (req: Request, res: Response) => {
     const session = getAuthenticatedSession(req);
@@ -1791,8 +1649,22 @@ async function startServer(): Promise<void> {
     });
   } else {
     const distDir = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      '/assets',
+      express.static(path.join(distDir, 'assets'), {
+        maxAge: '30d',
+        immutable: true,
+        etag: true,
+      })
+    );
+    app.use(
+      express.static(distDir, {
+        index: false,
+        maxAge: '1h',
+      })
+    );
     app.get('*', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distDir, 'index.html'));
     });
   }
@@ -1803,8 +1675,14 @@ async function startServer(): Promise<void> {
       void runScheduledTelegramJobs();
     }, 3_500);
     setInterval(() => {
+      const now = Date.now();
+      for (const [k, expiresAt] of schedulerFailureCooldown.entries()) {
+        if (now >= expiresAt) {
+          schedulerFailureCooldown.delete(k);
+        }
+      }
       void runScheduledTelegramJobs();
-    }, 45_000);
+    }, 60_000);
   });
 }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Input, InputNumber, Popconfirm, Select, Switch } from 'antd';
-import { RotateCcw, Download, KeyRound, Send, Bell, Save, Clock, Bot, Trash2 } from 'lucide-react';
+import { RotateCcw, Download, KeyRound, Send, Bell, Save, Bot, Trash2 } from 'lucide-react';
 import { getDefaultBotLabel, isValidTelegramChatId } from '../utils/telegramMessages.js';
 import { isValidTelegramBotToken, normalizeGroupEnvKey } from '../utils/telegramBotConfig.js';
 import TelegramMessageCustomizer from './TelegramMessageCustomizer.jsx';
@@ -27,7 +27,6 @@ export default function SettingsView({
   onSaveTelegramBotToken,
   onDeleteTelegramBotToken,
   onTestTelegram,
-  onSendShiftReminderNow,
   onResetDefaults,
   onExportBackupJson,
   onNotify,
@@ -37,7 +36,6 @@ export default function SettingsView({
   const [savingBotToken, setSavingBotToken] = useState(false);
   const [deletingBotToken, setDeletingBotToken] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
-  const [sendingReminder, setSendingReminder] = useState(false);
 
   useEffect(() => {
     setChatIdDraft(settings.telegramChatId || '');
@@ -107,19 +105,6 @@ export default function SettingsView({
     }
   };
 
-  const handleReminderNowClick = async () => {
-    if (!activeGroup?.id || !onSendShiftReminderNow) return;
-    if (isChatIdDirty && isValidTelegramChatId(trimmedChatId)) {
-      await onUpdateSettings({ ...settings, telegramChatId: trimmedChatId });
-    }
-    setSendingReminder(true);
-    try {
-      await onSendShiftReminderNow(activeGroup.id);
-    } finally {
-      setSendingReminder(false);
-    }
-  };
-
   const renderBotStatusLabel = () => {
     if (telegramStatus.source === 'custom') {
       const handle = telegramStatus.botUsername ? `@${telegramStatus.botUsername}` : 'Bot riêng';
@@ -145,18 +130,6 @@ export default function SettingsView({
   const envVarHint = activeGroup?.id
     ? `TELEGRAM_BOT_TOKEN_${normalizeGroupEnvKey(activeGroup.id)}`
     : 'TELEGRAM_BOT_TOKEN_GROUP_1';
-
-  const reminderTime = settings.telegramShiftReminderTime || '11:00';
-  const sched = telegramStatus?.schedulerState || null;
-  const serverDateVN = telegramStatus?.serverDateVN || '';
-  const isTodaySched = Boolean(serverDateVN && sched?.lastShiftReminderDate === serverDateVN);
-  const sentAtLabel = sched?.lastShiftReminderSentAt
-    ? new Date(sched.lastShiftReminderSentAt).toLocaleTimeString('vi-VN', {
-        timeZone: 'Asia/Ho_Chi_Minh',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '';
 
   return (
     <div className="flex flex-col gap-5">
@@ -375,111 +348,34 @@ export default function SettingsView({
           </div>
 
           <div className="flex flex-col justify-between gap-3 p-4 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-[#2563EB]" aria-hidden="true" />
-                    Nhắc đăng ký ca làm lúc {reminderTime} hằng ngày
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    Tự động nhắn nhắc đăng ký ca vào Group Telegram từ {reminderTime} (giờ Việt Nam, tự động bù gửi trong vòng 3 tiếng nếu máy chủ vừa khởi động lại).
-                  </div>
-                </div>
-                <Switch
-                  disabled={!canEdit}
-                  checked={settings.telegramShiftReminderEnabled !== false}
-                  aria-label="Nhắc mọi người đăng ký ca làm hằng ngày"
-                  onChange={(checked) =>
-                    onUpdateSettings({ ...settings, telegramShiftReminderEnabled: checked })
-                  }
-                />
+            <div className="flex flex-col gap-2.5">
+              <div className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-[#2563EB]" aria-hidden="true" />
+                Thông báo Telegram tự động của {botLabel}
               </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/80 pt-2.5">
-                <label
-                  htmlFor="settings-tg-shift-reminder-time"
-                  className="text-xs font-medium text-slate-700"
-                >
-                  Giờ nhắc tự động (VN):
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="settings-tg-shift-reminder-time"
-                    type="time"
-                    size="small"
-                    disabled={!canEdit}
-                    value={reminderTime}
-                    onChange={(e) =>
-                      onUpdateSettings({
-                        ...settings,
-                        telegramShiftReminderTime: e.target.value || '11:00',
-                      })
-                    }
-                    className="w-28 font-tabular"
-                  />
-                  {canEdit && reminderTime !== '11:00' && (
-                    <Button
-                      size="small"
-                      onClick={() =>
-                        onUpdateSettings({ ...settings, telegramShiftReminderTime: '11:00' })
-                      }
-                    >
-                      Mặc định 11:00
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="text-xs rounded-md bg-white border border-slate-200/90 px-3 py-2">
-                {!settings.telegramEnabled ? (
-                  <span className="text-slate-500">Đang tắt gửi thông báo Telegram chung.</span>
-                ) : settings.telegramShiftReminderEnabled === false ? (
-                  <span className="text-slate-500">Đang tắt nhắc đăng ký ca hằng ngày.</span>
-                ) : !trimmedChatId ? (
-                  <span className="text-amber-700 font-medium">
-                    Chưa có Group Chat ID nên chưa thể gửi nhắc ca tự động.
-                  </span>
-                ) : !telegramStatus.configured ? (
-                  <span className="text-amber-700 font-medium">
-                    Chưa gắn Bot Token hợp lệ cho nhóm này.
-                  </span>
-                ) : isTodaySched && sched?.lastShiftReminderStatus === 'error' ? (
-                  <span className="text-red-600 font-medium">
-                    Lỗi gửi nhắc ca hôm nay: {sched.lastShiftReminderError || 'Không rõ lỗi Telegram'}
-                  </span>
-                ) : isTodaySched && sched?.lastShiftReminderStatus === 'sent' ? (
-                  <span className="text-emerald-700 font-medium">
-                    Đã gửi nhắc ca hôm nay ({serverDateVN})
-                    {sentAtLabel ? ` lúc ${sentAtLabel} (giờ VN)` : ''}.
-                  </span>
-                ) : (
-                  <span className="text-slate-700">
-                    Hôm nay ({serverDateVN || 'giờ VN'}) chưa gửi nhắc ca — sẽ tự gửi từ{' '}
-                    <strong>{reminderTime}</strong>.
-                  </span>
-                )}
+              <div className="text-xs text-slate-600 space-y-1.5">
+                <div>• <strong>Khi bấm &quot;Lưu bảng chia CAP&quot;:</strong> {botLabel} chụp gửi ảnh bảng chia CAP kèm tổng điểm và link mở nhanh.</div>
+                <div>• <strong>Khi chỉnh sửa &amp; lưu lại:</strong> Gửi ảnh bảng mới nhất và tự ghi chú đúng ô thay đổi.</div>
+                <div>• <strong>Nhắc tiến độ &amp; tổng kết ngày:</strong> Tự động gửi theo hai khung giờ tùy chỉnh bên dưới (nếu có đặt giờ).</div>
               </div>
             </div>
-
-            <div className="text-xs text-slate-600 space-y-1 border-t border-slate-200/80 pt-2.5">
-              <div>• <strong>Khi bấm &quot;Lưu bảng chia CAP&quot;:</strong> {botLabel} chụp gửi ảnh bảng chia CAP (tự chuyển văn bản nếu gửi ảnh lỗi).</div>
-              <div>• <strong>Khi chỉnh sửa &amp; lưu lại:</strong> Gửi ảnh bảng mới nhất và tự ghi chú đúng ô thay đổi.</div>
+            <div className="text-xs rounded-md bg-white border border-slate-200/90 px-3 py-2 text-slate-600">
+              {!settings.telegramEnabled ? (
+                <span>Đang tắt gửi thông báo Telegram chung.</span>
+              ) : !trimmedChatId ? (
+                <span className="text-amber-700 font-medium">
+                  Chưa có Group Chat ID nên chưa thể gửi thông báo vào nhóm.
+                </span>
+              ) : !telegramStatus.configured ? (
+                <span className="text-amber-700 font-medium">
+                  Chưa gắn Bot Token hợp lệ cho nhóm này.
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-medium">
+                  Đã sẵn sàng gửi thông báo chia CAP cho {activeGroup?.name || 'nhóm'}.
+                </span>
+              )}
             </div>
-
-            {canEdit && (
-              <div className="flex items-center justify-end">
-                <Button
-                  size="small"
-                  icon={<Send className="w-3.5 h-3.5" />}
-                  loading={sendingReminder}
-                  disabled={!settings.telegramEnabled || !trimmedChatId || !isChatIdValid}
-                  onClick={handleReminderNowClick}
-                >
-                  Gửi nhắc đăng ký ca
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -741,21 +637,21 @@ export default function SettingsView({
               {canEdit && (
                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-medium text-slate-900">Khôi phục dữ liệu mẫu mặc định</div>
+                    <div className="text-sm font-medium text-slate-900">Khôi phục dữ liệu mặc định</div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      Đưa thành viên (6 người) và danh sách 8 offer mẫu của nhóm về mặc định.
+                      Đưa danh sách thành viên (6 người) về mặc định và làm trống danh sách offer của nhóm.
                     </div>
                   </div>
                   <Popconfirm
                     title="Khôi phục dữ liệu mặc định cho nhóm này?"
-                    description="Danh sách thành viên, offer và bảng chia của nhóm sẽ trở về dữ liệu mẫu ban đầu."
+                    description="Danh sách thành viên sẽ trở về mặc định và danh sách offer / bảng chia của nhóm sẽ được làm trống."
                     okText="Khôi phục"
                     cancelText="Hủy"
                     okButtonProps={{ danger: true }}
                     onConfirm={onResetDefaults}
                   >
                     <Button danger icon={<RotateCcw className="w-4 h-4" />}>
-                      Khôi phục mẫu
+                      Khôi phục mặc định
                     </Button>
                   </Popconfirm>
                 </div>

@@ -13,7 +13,7 @@
 2. **Tạo Web Service trên Render**
    - Đăng nhập https://render.com bằng GitHub.
    - Chọn **New +** → **Blueprint** (tự động đọc file `render.yaml` đã cấu hình sẵn `plan: free`, `Node 22`, `build`, `start`, `/healthz`), hoặc chọn **New +** → **Web Service** với thông số:
-     - **Build Command:** `npm install && npm run build`
+     - **Build Command:** `npm install --legacy-peer-deps && npm run build`
      - **Start Command:** `npm start`
      - **Instance Type:** `Free`
      - **Health Check Path:** `/healthz`
@@ -30,7 +30,7 @@
 
 1. Đăng nhập https://app.koyeb.com bằng GitHub → **Create Web Service** → chọn repo GitHub.
 2. Chọn instance **Free**, Buildpack **Node.js** (đã có `"engines": { "node": ">=22.18.0" }` và `.node-version`):
-   - **Build command:** `npm install && npm run build`
+   - **Build command:** `npm install --legacy-peer-deps && npm run build`
    - **Run command:** `npm start`
    - **Port:** `3000` (hoặc biến `PORT` mặc định của Koyeb)
    - **Health check path:** `/healthz`
@@ -46,7 +46,7 @@
    - Dán domain mới của bạn vào (ví dụ: `cap-manager-xxxx.onrender.com` hoặc `xxxx.koyeb.app`) → **Add**.
    - *(Nếu thiếu bước này, bấm đăng nhập Google để đọc Google Sheets sẽ báo lỗi `auth/unauthorized-domain`.)*
 
-2. **Giữ Bot Telegram nhắc lịch đúng giờ `11:00` và `23:30` khi dùng gói Free:**
+2. **Giữ Bot Telegram gửi lịch nhắc tùy chỉnh khi dùng gói Free:**
    - Trên gói Free, Render tự ngủ nếu **15 phút không có ai mở web**.
-   - Bạn có thể tạo lịch miễn phí tại https://cron-job.org gọi vào link:
-     `https://<domain-cua-ban>/api/telegram/cron` (mỗi 10–15 phút hoặc lúc `11:00` & `23:30` giờ VN, kèm header `x-cron-secret: <CRON_SECRET>` nếu bạn có cài `CRON_SECRET`).
+   - Nếu bạn có cài giờ nhắc CAP chưa xong hoặc tổng kết cuối ngày, bạn có thể tạo lịch miễn phí tại https://cron-job.org gọi vào link:
+     `https://<domain-cua-ban>/api/telegram/cron` (mỗi 10–15 phút, kèm header `x-cron-secret: <CRON_SECRET>` nếu bạn có cài `CRON_SECRET`).

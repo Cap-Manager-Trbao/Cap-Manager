@@ -443,7 +443,7 @@ export function getDefaultTelegramTemplates(groupId = '') {
     ].join('\n'),
     testMessage: [
       `**${icon} ${label} đã sẵn sàng phục vụ {group}!**`,
-      `Kết nối Bot Telegram thành công. ${label} sẽ tự động gửi bảng chia CAP khi Nhóm trưởng chốt, báo phần điều chỉnh và nhắc cả nhà đăng ký ca làm lúc 11:00 hằng ngày ạ.`,
+      `Kết nối Bot Telegram thành công. ${label} sẽ tự động gửi bảng chia CAP khi Nhóm trưởng chốt và báo phần điều chỉnh cho cả nhà ạ.`,
     ].join('\n'),
   };
 }
@@ -1027,7 +1027,7 @@ export function formatTelegramTestMessage({
 
   const lines = [
     `${botIcon} <b>${botLabel} đã sẵn sàng phục vụ ${safeGroup}!</b>`,
-    `Kết nối Bot Telegram thành công. ${botLabel} sẽ tự động gửi bảng chia CAP khi Nhóm trưởng chốt, báo phần điều chỉnh và nhắc cả nhà đăng ký ca làm lúc 11:00 hằng ngày ạ.`,
+    `Kết nối Bot Telegram thành công. ${botLabel} sẽ tự động gửi bảng chia CAP khi Nhóm trưởng chốt và báo phần điều chỉnh cho cả nhà ạ.`,
   ];
   if (linkHtml) {
     lines.push(linkHtml);

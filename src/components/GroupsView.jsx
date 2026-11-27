@@ -56,11 +56,9 @@ export default function GroupsView({
       leaderUsername: `leader${nextIdx}`,
       leaderPassword: '',
       confirmLeaderPassword: '',
-      copyDefaultCampaigns: true,
       telegramEnabled: false,
       telegramChatId: '',
       telegramBotToken: '',
-      telegramShiftReminderEnabled: true,
     });
     setModalOpen(true);
   };
@@ -78,7 +76,6 @@ export default function GroupsView({
       telegramEnabled: Boolean(group.settings?.telegramEnabled),
       telegramChatId: group.settings?.telegramChatId || '',
       telegramBotToken: '',
-      telegramShiftReminderEnabled: group.settings?.telegramShiftReminderEnabled !== false,
     });
     setModalOpen(true);
   };
@@ -144,7 +141,6 @@ export default function GroupsView({
             settings: {
               telegramEnabled: Boolean(values.telegramEnabled),
               telegramChatId: cleanChatId,
-              telegramShiftReminderEnabled: values.telegramShiftReminderEnabled !== false,
             },
             telegramBotToken: cleanBotToken,
           },
@@ -161,11 +157,9 @@ export default function GroupsView({
           leaderDisplayName: values.leaderDisplayName.trim(),
           leaderUsername: username,
           leaderPassword: values.leaderPassword,
-          copyDefaultCampaigns: Boolean(values.copyDefaultCampaigns),
           telegramEnabled: Boolean(values.telegramEnabled),
           telegramChatId: cleanChatId,
           telegramBotToken: cleanBotToken,
-          telegramShiftReminderEnabled: values.telegramShiftReminderEnabled !== false,
         });
         if (ok !== false) {
           onNotify('success', `Đã tạo nhóm mới "${values.name.trim()}" và tài khoản Leader "${username}"`);
@@ -496,22 +490,6 @@ export default function GroupsView({
                     </Form.Item>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-xs font-medium text-slate-700">
-                      Nhắc mọi người đăng ký ca làm lúc 11:00 hằng ngày
-                    </span>
-                    <Form.Item
-                      name="telegramShiftReminderEnabled"
-                      valuePropName="checked"
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Switch
-                        size="small"
-                        aria-label="Nhắc mọi người đăng ký ca làm lúc 11h hằng ngày"
-                      />
-                    </Form.Item>
-                  </div>
-
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <label
@@ -636,20 +614,6 @@ export default function GroupsView({
             );
           })()}
 
-          {!editingGroup && (
-            <div className="flex items-center justify-between gap-4 pt-2">
-              <span className="text-xs font-medium text-slate-700">
-                Khởi tạo kèm danh sách 8 offer mẫu
-              </span>
-              <Form.Item
-                name="copyDefaultCampaigns"
-                valuePropName="checked"
-                style={{ marginBottom: 0 }}
-              >
-                <Switch size="small" aria-label="Khởi tạo kèm danh sách 8 offer mẫu" />
-              </Form.Item>
-            </div>
-          )}
         </Form>
       </Modal>
     </div>
